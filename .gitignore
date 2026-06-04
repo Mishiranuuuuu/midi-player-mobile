@@ -1,0 +1,22 @@
+*.iml
+.gradle
+/local.properties
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+.DS_Store
+/build
+/captures
+/piano
+.externalNativeBuild
+.cxx
+local.properties
+*.log
+build_output.txt
+build_trace.txt
+
+# app level build
+/app/build/

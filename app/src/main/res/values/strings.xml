@@ -1,0 +1,39 @@
+<resources>
+    <string name="app_name">Auto Clicker</string>
+    <string name="accessibility_service_description">Auto Clicker uses this accessibility service to perform automated screen taps at configurable intervals and positions. No personal data is collected or transmitted.</string>
+
+    <!-- Permission Cards -->
+    <string name="overlay_permission_title">Overlay Permission</string>
+    <string name="overlay_permission_desc">Required to show floating controls over other apps</string>
+    <string name="accessibility_permission_title">Accessibility Service</string>
+    <string name="accessibility_permission_desc">Required to perform automated screen taps</string>
+    <string name="grant_permission">Grant</string>
+    <string name="permission_granted">Granted</string>
+
+    <!-- Configuration -->
+    <string name="click_interval">Click Interval</string>
+    <string name="interval_ms">%d ms</string>
+    <string name="repeat_count">Repeat Count</string>
+    <string name="infinite">Infinite</string>
+    <string name="times">%d times</string>
+    <string name="piano_layout">Piano Layout</string>
+    <string name="grid_scale">Grid Scale</string>
+    <string name="layout_5col">5-Column</string>
+    <string name="layout_5col_desc">15 keys — 3 rows × 5 columns</string>
+    <string name="layout_7col">7-Column</string>
+    <string name="layout_7col_desc">22 keys — 3 rows (8+7+7)</string>
+    <string name="layout_7col_sharps">7-Col + Sharps</string>
+    <string name="layout_7col_sharps_desc">22 white + 15 black keys</string>
+
+    <!-- Actions -->
+    <string name="start_clicker">Start Auto Clicker</string>
+    <string name="stop_clicker">Stop</string>
+    <string name="service_running">Service is active</string>
+    <string name="service_stopped">Service is inactive</string>
+
+    <!-- Notification -->
+    <string name="notification_channel_name">Auto Clicker</string>
+    <string name="notification_channel_desc">Shows when auto clicker is running</string>
+    <string name="notification_title">Auto Clicker Active</string>
+    <string name="notification_text">Tap to open settings</string>
+</resources>
