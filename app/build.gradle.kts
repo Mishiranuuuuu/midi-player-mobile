@@ -16,8 +16,24 @@ android {
         versionName = "1.0.0"
     }
 
+    signingConfigs {
+        create("release") {
+            val localProperties = java.util.Properties()
+            val localPropertiesFile = rootProject.file("local.properties")
+            if (localPropertiesFile.exists()) {
+                localProperties.load(java.io.FileInputStream(localPropertiesFile))
+            }
+            
+            storeFile = file("../release-key.jks")
+            storePassword = localProperties.getProperty("keystore.password") ?: ""
+            keyAlias = localProperties.getProperty("keystore.alias") ?: "my-alias"
+            keyPassword = localProperties.getProperty("keystore.password") ?: ""
+        }
+    }
+
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

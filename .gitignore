@@ -18,5 +18,8 @@ local.properties
 build_output.txt
 build_trace.txt
 
+# Keystore files
+*.jks
+*.keystore
 # app level build
 /app/build/
