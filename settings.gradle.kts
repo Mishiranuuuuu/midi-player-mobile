@@ -21,5 +21,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "AutoClicker"
+rootProject.name = "Piano Player"
 include(":app")

@@ -1,5 +1,5 @@
 <resources>
-    <string name="app_name">Auto Clicker</string>
+    <string name="app_name">Piano Player</string>
     <string name="accessibility_service_description">Auto Clicker uses this accessibility service to perform automated screen taps at configurable intervals and positions. No personal data is collected or transmitted.</string>
 
     <!-- Permission Cards -->
