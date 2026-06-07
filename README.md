@@ -1,4 +1,4 @@
-# Heartopia Piano Player for mobile or whatever
+# Midi Player Mobile
 
 Just an app for macro on mobile since one guy asked for it.
 
