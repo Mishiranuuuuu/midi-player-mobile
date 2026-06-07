@@ -24,6 +24,8 @@ A note on the UI: The interface was built with AI assistance.
 
 We recommend using [Split APKs Installer (SAI)](https://play.google.com/store/apps/details?id=com.mtv.sai) but other works fine
 
+A note on the comments in the code: Most of the comments in the code is mostly written by AI.
+
 ## Build Instructions
 
 1.  Clone the repository:
