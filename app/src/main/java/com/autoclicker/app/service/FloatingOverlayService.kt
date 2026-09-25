@@ -1114,6 +1114,7 @@ class FloatingOverlayService : Service() {
                         layoutType = config.layoutType,
                         markerScreenPositions = positions,
                         speedMultiplier = config.midiSpeedMultiplier,
+                        pitchTransposition = config.pitchTransposition,
                         onMarkerClicked = { markerIndex ->
                             highlightMarker(markerIndex)
                         }

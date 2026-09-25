@@ -17,6 +17,7 @@ package com.autoclicker.app.data
  * @param midiFileUri    Content URI string of the loaded MIDI file, or null if none loaded.
  * @param midiFileName   Display name of the loaded MIDI file, or null if none loaded.
  * @param midiSpeedMultiplier  Playback speed multiplier for MIDI (1.0 = normal tempo).
+ * @param pitchTransposition   Pitch transposition in semitones (-24 to +24).
  */
 data class ClickConfig(
     val x: Float = 540f,
@@ -28,7 +29,8 @@ data class ClickConfig(
     val gridOffsetY: Float = 400f,
     val midiFileUri: String? = null,
     val midiFileName: String? = null,
-    val midiSpeedMultiplier: Float = 1.0f
+    val midiSpeedMultiplier: Float = 1.0f,
+    val pitchTransposition: Int = 0
 ) {
     companion object {
         /** Minimum allowed value for [gridScaleX] and [gridScaleY]. */

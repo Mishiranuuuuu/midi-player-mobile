@@ -63,6 +63,7 @@ class MidiPlaybackEngine {
     private var currentLayoutType: LayoutType? = null
     private var currentPositions: List<Pair<Float, Float>>? = null
     private var currentSpeed: Float = 1.0f
+    private var currentPitchTransposition: Int = 0
     private var currentOnMarkerClicked: ((Int) -> Unit)? = null
     private var pausedAtIndex: Int = 0
 
@@ -79,6 +80,7 @@ class MidiPlaybackEngine {
         layoutType: LayoutType,
         markerScreenPositions: List<Pair<Float, Float>>,
         speedMultiplier: Float = 1.0f,
+        pitchTransposition: Int = 0,
         onMarkerClicked: ((Int) -> Unit)? = null
     ) {
         stop() // Stop any existing playback
@@ -87,9 +89,10 @@ class MidiPlaybackEngine {
         currentLayoutType = layoutType
         currentPositions = markerScreenPositions
         currentSpeed = speedMultiplier
+        currentPitchTransposition = pitchTransposition
         currentOnMarkerClicked = onMarkerClicked
 
-        startPlaybackFrom(0, song, layoutType, markerScreenPositions, speedMultiplier, onMarkerClicked)
+        startPlaybackFrom(0, song, layoutType, markerScreenPositions, speedMultiplier, pitchTransposition, onMarkerClicked)
     }
 
     /**
@@ -114,7 +117,7 @@ class MidiPlaybackEngine {
         if (_state.value.isPaused) {
             startPlaybackFrom(
                 pausedAtIndex,
-                song, layout, positions, currentSpeed, currentOnMarkerClicked
+                song, layout, positions, currentSpeed, currentPitchTransposition, currentOnMarkerClicked
             )
         }
     }
@@ -142,15 +145,28 @@ class MidiPlaybackEngine {
         layoutType: LayoutType,
         markerScreenPositions: List<Pair<Float, Float>>,
         speedMultiplier: Float,
+        pitchTransposition: Int,
         onMarkerClicked: ((Int) -> Unit)?
     ) {
-        // Filter to note-on events only (we tap on note-on, ignore note-off)
+        // Filter to note-on events only (we tap on note-on)
         val noteOnEvents = song.notes.filter { it.isNoteOn }
 
         if (noteOnEvents.isEmpty()) {
             Log.w(TAG, "No note-on events in song")
             return
         }
+
+        // Pre-calculate durations by finding the corresponding note-off events
+        val noteDurations = LongArray(noteOnEvents.size) { 50L }
+        for (i in noteOnEvents.indices) {
+            val onEvent = noteOnEvents[i]
+            // Find the first matching note-off event that happens after this note-on
+            val offEvent = song.notes.find { !it.isNoteOn && it.note == onEvent.note && it.timeMs > onEvent.timeMs }
+            if (offEvent != null) {
+                noteDurations[i] = (offEvent.timeMs - onEvent.timeMs).coerceAtLeast(10L)
+            }
+        }
+
 
         val totalNotes = noteOnEvents.size
 
@@ -173,12 +189,15 @@ class MidiPlaybackEngine {
                 if (!isActive) break
 
                 val baseNote = noteOnEvents[i]
+                val baseNoteDuration = noteDurations[i]
                 val chordNotes = mutableListOf(baseNote)
+                val chordDurations = mutableListOf(baseNoteDuration)
 
                 // Look ahead for chord notes (notes happening at the exact same time)
                 var j = i + 1
                 while (j < totalNotes && noteOnEvents[j].timeMs == baseNote.timeMs) {
                     chordNotes.add(noteOnEvents[j])
+                    chordDurations.add(noteDurations[j])
                     j++
                 }
 
@@ -200,19 +219,23 @@ class MidiPlaybackEngine {
                 if (!isActive) break
 
                 // Collect points for all mapped notes in the chord
-                val pointsToClick = mutableListOf<Pair<Float, Float>>()
-                for (note in chordNotes) {
-                    val markerIndex = NoteMapper.getMappedMarkerIndex(note.note, layoutType)
+                val pointsToClick = mutableListOf<Triple<Float, Float, Long>>()
+                for (k in chordNotes.indices) {
+                    val note = chordNotes[k]
+                    val duration = chordDurations[k]
+                    val transposedNote = note.note + pitchTransposition
+                    val markerIndex = NoteMapper.getMappedMarkerIndex(transposedNote, layoutType)
                     if (markerIndex >= 0 && markerIndex < markerScreenPositions.size) {
-                        pointsToClick.add(markerScreenPositions[markerIndex])
+                        val (x, y) = markerScreenPositions[markerIndex]
+                        pointsToClick.add(Triple(x, y, (duration / speedMultiplier).toLong()))
                         onMarkerClicked?.invoke(markerIndex)
                     }
                 }
 
                 // Dispatch the click(s)
                 if (pointsToClick.size == 1) {
-                    val (x, y) = pointsToClick[0]
-                    AutoClickerAccessibilityService.instance?.performSingleClick(x, y)
+                    val (x, y, dur) = pointsToClick[0]
+                    AutoClickerAccessibilityService.instance?.performSingleClick(x, y, dur)
                 } else if (pointsToClick.size > 1) {
                     AutoClickerAccessibilityService.instance?.performMultiClick(pointsToClick)
                 }

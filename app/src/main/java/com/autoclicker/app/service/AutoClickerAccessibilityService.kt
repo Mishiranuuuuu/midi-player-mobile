@@ -136,7 +136,7 @@ class AutoClickerAccessibilityService : AccessibilityService() {
     /**
      * Perform a single tap at the given screen coordinates.
      */
-    private fun performClick(x: Float, y: Float) {
+    private fun performClick(x: Float, y: Float, durationMs: Long = 50L) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.w(TAG, "dispatchGesture requires API 24+")
             return
@@ -149,7 +149,7 @@ class AutoClickerAccessibilityService : AccessibilityService() {
         val stroke = GestureDescription.StrokeDescription(
             path,
             0,   // startTime: begin immediately
-            50   // duration: 50ms tap (short press)
+            durationMs.coerceAtLeast(10L)
         )
 
         val gesture = GestureDescription.Builder()
@@ -177,15 +177,15 @@ class AutoClickerAccessibilityService : AccessibilityService() {
      * Perform a single tap at the given screen coordinates.
      * Public version for use by [MidiPlaybackEngine] which controls its own timing.
      */
-    fun performSingleClick(x: Float, y: Float) {
-        performClick(x, y)
+    fun performSingleClick(x: Float, y: Float, durationMs: Long = 50L) {
+        performClick(x, y, durationMs)
     }
 
     /**
      * Perform multiple simultaneous taps at the given screen coordinates.
      * Used for playing MIDI chords.
      */
-    fun performMultiClick(points: List<Pair<Float, Float>>) {
+    fun performMultiClick(points: List<Triple<Float, Float, Long>>) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) {
             Log.w(TAG, "dispatchGesture requires API 24+")
             return
@@ -199,14 +199,14 @@ class AutoClickerAccessibilityService : AccessibilityService() {
         val maxPoints = minOf(points.size, 10) 
         
         for (i in 0 until maxPoints) {
-            val (x, y) = points[i]
+            val (x, y, duration) = points[i]
             val path = Path().apply {
                 moveTo(x, y)
             }
             val stroke = GestureDescription.StrokeDescription(
                 path,
                 0,   // startTime: begin immediately
-                50   // duration: 50ms tap (short press)
+                duration.coerceAtLeast(10L)
             )
             builder.addStroke(stroke)
         }

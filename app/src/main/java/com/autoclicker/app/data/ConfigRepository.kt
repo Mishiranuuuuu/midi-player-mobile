@@ -31,6 +31,7 @@ class ConfigRepository(context: Context) {
             .putFloat(KEY_GRID_OFFSET_X, newConfig.gridOffsetX)
             .putFloat(KEY_GRID_OFFSET_Y, newConfig.gridOffsetY)
             .putFloat(KEY_MIDI_SPEED, newConfig.midiSpeedMultiplier)
+            .putInt(KEY_PITCH_TRANSPOSITION, newConfig.pitchTransposition)
             .apply {
                 if (newConfig.midiFileUri != null) {
                     putString(KEY_MIDI_URI, newConfig.midiFileUri)
@@ -89,6 +90,11 @@ class ConfigRepository(context: Context) {
         )))
     }
 
+    fun updatePitchTransposition(amount: Int) {
+        val current = _config.value
+        updateConfig(current.copy(pitchTransposition = amount.coerceIn(-24, 24)))
+    }
+
     /**
      * Load the persisted configuration from SharedPreferences.
      * Called once during construction to hydrate the initial [_config] state.
@@ -104,7 +110,8 @@ class ConfigRepository(context: Context) {
             gridOffsetY = prefs.getFloat(KEY_GRID_OFFSET_Y, 400f),
             midiFileUri = prefs.getString(KEY_MIDI_URI, null),
             midiFileName = prefs.getString(KEY_MIDI_NAME, null),
-            midiSpeedMultiplier = prefs.getFloat(KEY_MIDI_SPEED, 1.0f)
+            midiSpeedMultiplier = prefs.getFloat(KEY_MIDI_SPEED, 1.0f),
+            pitchTransposition = prefs.getInt(KEY_PITCH_TRANSPOSITION, 0)
         )
     }
 
@@ -121,6 +128,7 @@ class ConfigRepository(context: Context) {
         private const val KEY_MIDI_URI = "midi_file_uri"
         private const val KEY_MIDI_NAME = "midi_file_name"
         private const val KEY_MIDI_SPEED = "midi_speed"
+        private const val KEY_PITCH_TRANSPOSITION = "pitch_transposition"
 
         /**
          * Thread-safe singleton instance.

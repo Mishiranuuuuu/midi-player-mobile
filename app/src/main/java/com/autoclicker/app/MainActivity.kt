@@ -267,13 +267,15 @@ fun AutoClickerApp(
                     MidiFileCard(
                         midiFileName = config.midiFileName,
                         midiSpeed = config.midiSpeedMultiplier,
+                        pitchTransposition = config.pitchTransposition,
                         onFileSelected = { uri, name ->
                             configRepository.updateMidiFile(uri, name)
                         },
                         onFileClear = {
                             configRepository.updateMidiFile(null, null)
                         },
-                        onSpeedChange = { configRepository.updateMidiSpeed(it) }
+                        onSpeedChange = { configRepository.updateMidiSpeed(it) },
+                        onPitchChange = { configRepository.updatePitchTransposition(it) }
                     )
 
                     Spacer(Modifier.height(12.dp))
@@ -616,9 +618,11 @@ fun LayoutPresetCard(
 fun MidiFileCard(
     midiFileName: String?,
     midiSpeed: Float,
+    pitchTransposition: Int,
     onFileSelected: (uri: String, name: String) -> Unit,
     onFileClear: () -> Unit,
-    onSpeedChange: (Float) -> Unit
+    onSpeedChange: (Float) -> Unit,
+    onPitchChange: (Int) -> Unit
 ) {
     val context = LocalContext.current
     var noteInfo by remember { mutableStateOf<String?>(null) }
@@ -794,6 +798,60 @@ fun MidiFileCard(
                     Text("0.25×", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                     Text("1.0×", style = MaterialTheme.typography.labelSmall, color = TextMuted)
                     Text("3.0×", style = MaterialTheme.typography.labelSmall, color = TextMuted)
+                }
+
+                Spacer(Modifier.height(16.dp))
+
+                // Pitch Transposition
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        Icons.Filled.MusicNote,
+                        contentDescription = null,
+                        tint = CyanAccent,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(
+                        text = "Pitch",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextSecondary
+                    )
+                    Spacer(Modifier.weight(1f))
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(DarkSurfaceVariant)
+                                .clickable { onPitchChange(pitchTransposition - 1) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("-", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+
+                        Text(
+                            text = if (pitchTransposition > 0) "+$pitchTransposition" else "$pitchTransposition",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = CyanAccent,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(DarkSurfaceVariant)
+                                .clickable { onPitchChange(pitchTransposition + 1) },
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("+", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
                 }
             } else {
                 // File picker button

@@ -4,6 +4,8 @@ Midi Player Mobile is an Android app for playing MIDI files and using them as a 
 
 Originally, this project was created for Heartopia, but it can also be adapted for other games or instruments that use similar input timing.
 
+**Note: This app won't work on Android 15 and above due to Android AccessibilityService API changes. But might try to find a way to make it work. But not now.**
+
 A note on the UI: The interface was built with AI assistance.
 
 ## Features
@@ -28,21 +30,26 @@ A note on the comments in the code: Most of the comments in the code is mostly w
 
 ## Build Instructions
 
-1.  Clone the repository:
+1. Clone the repository:
+
     ```bash
     git clone https://github.com/Mishiranuuuuu/midi-player-mobile
     cd midi-player-mobile
     ```
 
-2.  Build the app:
+2. Build the app:
     You can use
+
     ```bash
     ./gradlew assembleDebug
     ```
+
     For a debug build, or using
+
     ```bash
     ./gradlew assembleRelease
     ```
+
     For a release build.
     > Release builds require a signing keystore. See Android's [signing guide](https://developer.android.com/studio/publish/app-signing) to set one up before running this.
 
