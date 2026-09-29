@@ -97,15 +97,34 @@ class FloatingOverlayService : Service() {
         windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
         configRepository = ConfigRepository.getInstance(this)
 
-        // Get screen dimensions
-        val metrics = DisplayMetrics()
-        @Suppress("DEPRECATION")
-        windowManager.defaultDisplay.getMetrics(metrics)
-        screenWidth = metrics.widthPixels
-        screenHeight = metrics.heightPixels
+        // Get screen dimensions (modern API for Android 11+, fallback for older)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val windowMetrics = windowManager.currentWindowMetrics
+            val insets = windowMetrics.windowInsets
+                .getInsetsIgnoringVisibility(
+                    android.view.WindowInsets.Type.systemBars()
+                )
+            val bounds = windowMetrics.bounds
+            screenWidth = bounds.width() - insets.left - insets.right
+            screenHeight = bounds.height() - insets.top - insets.bottom
+        } else {
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getMetrics(metrics)
+            screenWidth = metrics.widthPixels
+            screenHeight = metrics.heightPixels
+        }
 
         createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            startForeground(
+                NOTIFICATION_ID,
+                buildNotification(),
+                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+            )
+        } else {
+            startForeground(NOTIFICATION_ID, buildNotification())
+        }
 
         val config = configRepository.config.value
         currentScaleX = config.gridScaleX

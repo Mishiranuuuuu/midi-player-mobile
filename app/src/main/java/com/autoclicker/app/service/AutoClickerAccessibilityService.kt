@@ -144,12 +144,13 @@ class AutoClickerAccessibilityService : AccessibilityService() {
 
         val path = Path().apply {
             moveTo(x, y)
+            lineTo(x + 0.5f, y + 0.5f)  // tiny movement to ensure valid stroke on Android 15+
         }
 
         val stroke = GestureDescription.StrokeDescription(
             path,
             0,   // startTime: begin immediately
-            durationMs.coerceAtLeast(10L)
+            durationMs.coerceAtLeast(20L)  // slightly longer minimum for Android 15+ reliability
         )
 
         val gesture = GestureDescription.Builder()
@@ -202,11 +203,12 @@ class AutoClickerAccessibilityService : AccessibilityService() {
             val (x, y, duration) = points[i]
             val path = Path().apply {
                 moveTo(x, y)
+                lineTo(x + 0.5f, y + 0.5f)  // tiny movement to ensure valid stroke on Android 15+
             }
             val stroke = GestureDescription.StrokeDescription(
                 path,
                 0,   // startTime: begin immediately
-                duration.coerceAtLeast(10L)
+                duration.coerceAtLeast(20L)  // slightly longer minimum for Android 15+ reliability
             )
             builder.addStroke(stroke)
         }
