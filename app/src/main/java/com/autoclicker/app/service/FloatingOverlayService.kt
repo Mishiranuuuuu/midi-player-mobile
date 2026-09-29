@@ -94,7 +94,27 @@ class FloatingOverlayService : Service() {
      */
     override fun onCreate() {
         super.onCreate()
-        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        // On Android 15+, TYPE_APPLICATION_OVERLAY windows get hidden when the app
+        // goes to the background.  Fix: create a WindowContext from the running
+        // AccessibilityService for TYPE_ACCESSIBILITY_OVERLAY, which properly
+        // configures the DisplayArea and z-ordering so the overlay stays visible
+        // above ALL apps.
+        val a11yService = AutoClickerAccessibilityService.instance
+        if (Build.VERSION.SDK_INT >= 35 && a11yService != null) {
+            try {
+                val overlayContext = a11yService.createWindowContext(
+                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                    null
+                )
+                windowManager = overlayContext.getSystemService(WINDOW_SERVICE) as WindowManager
+                Log.d(TAG, "Using TYPE_ACCESSIBILITY_OVERLAY via accessibility service window context")
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to create accessibility overlay context, falling back", e)
+                windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+            }
+        } else {
+            windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        }
         configRepository = ConfigRepository.getInstance(this)
 
         // Get screen dimensions (modern API for Android 11+, fallback for older)
@@ -342,11 +362,7 @@ class FloatingOverlayService : Service() {
         // Window params
         val params = WindowManager.LayoutParams(
             bubbleSize, bubbleSize,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
+            getOverlayWindowType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -464,11 +480,7 @@ class FloatingOverlayService : Service() {
         // Window params
         val params = WindowManager.LayoutParams(
             scaledWidth, scaledHeight,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
+            getOverlayWindowType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                     WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL,
             PixelFormat.TRANSLUCENT
@@ -710,11 +722,7 @@ class FloatingOverlayService : Service() {
 
         val params = WindowManager.LayoutParams(
             handleW, handleH,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
+            getOverlayWindowType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -790,11 +798,7 @@ class FloatingOverlayService : Service() {
 
         val params = WindowManager.LayoutParams(
             handleW, handleH,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
+            getOverlayWindowType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -1051,11 +1055,7 @@ class FloatingOverlayService : Service() {
         val params = WindowManager.LayoutParams(
             panelWidth,
             WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            else
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE,
+            getOverlayWindowType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.TRANSLUCENT
         ).apply {
@@ -1256,6 +1256,27 @@ class FloatingOverlayService : Service() {
             dp.toFloat(),
             resources.displayMetrics
         ).toInt()
+    }
+
+    /**
+     * Return the correct overlay window type for the current Android version.
+     *
+     * - **Android 15+** (API 35): Use [WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY]
+     *   when the accessibility service is connected. This type is privileged and stays
+     *   visible above all apps even when our process is in the background — unlike
+     *   [WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY] which Android 15 hides.
+     * - **Android 8–14** (API 26–34): Use [WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY].
+     * - **Android 7 and below**: Use the deprecated [WindowManager.LayoutParams.TYPE_PHONE].
+     */
+    private fun getOverlayWindowType(): Int {
+        return if (Build.VERSION.SDK_INT >= 35 && AutoClickerAccessibilityService.instance != null) {
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            @Suppress("DEPRECATION")
+            WindowManager.LayoutParams.TYPE_PHONE
+        }
     }
 
     companion object {
