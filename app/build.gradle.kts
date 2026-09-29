@@ -18,8 +18,8 @@ android {
         applicationId = "com.autoclicker.app"
         minSdk = 24       // API 24 (Android 7.0) — required for dispatchGesture()
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.1"
+        versionCode = 3
+        versionName = "1.0.2"
     }
 
     // ─── Release signing config ──────────────────────────────────────
