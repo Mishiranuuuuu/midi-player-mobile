@@ -4,8 +4,6 @@ Midi Player Mobile is an Android app for playing MIDI files and using them as a 
 
 Originally, this project was created for Heartopia, but it can also be adapted for other games or instruments that use similar input timing.
 
-**Note: This app won't work on Android 15 and above due to Android AccessibilityService API changes. But might try to find a way to make it work. But not now.**
-
 A note on the UI: The interface was built with AI assistance.
 
 ## Features

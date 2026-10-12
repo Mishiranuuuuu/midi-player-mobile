@@ -14,6 +14,9 @@ import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.IBinder
+import android.app.Activity
+import android.hardware.display.DisplayManager
+import android.view.Display
 import android.util.DisplayMetrics
 import android.util.Log
 import android.util.TypedValue
@@ -71,6 +74,16 @@ class FloatingOverlayService : Service() {
     private var screenHeight = 0
     private var shouldKillProcess = false
 
+    // Display the overlay windows are currently attached to (see ActiveDisplayTracker)
+    private var currentDisplayId = Display.DEFAULT_DISPLAY
+    private val activeDisplayListener: (Int) -> Unit = { moveOverlayToDisplay(it) }
+
+    // Window type matching the current [windowManager] (accessibility or app overlay)
+    private var overlayWindowType = defaultOverlayWindowType()
+
+    // Play/pause icon inside the bubble (kept so state survives a display move)
+    private var bubbleIcon: ImageView? = null
+
     // Grid dimensions (base, before scaling)
     private var baseGridWidth = 0
     private var baseGridHeight = 0
@@ -94,46 +107,14 @@ class FloatingOverlayService : Service() {
      */
     override fun onCreate() {
         super.onCreate()
-        // On Android 15+, TYPE_APPLICATION_OVERLAY windows get hidden when the app
-        // goes to the background.  Fix: create a WindowContext from the running
-        // AccessibilityService for TYPE_ACCESSIBILITY_OVERLAY, which properly
-        // configures the DisplayArea and z-ordering so the overlay stays visible
-        // above ALL apps.
-        val a11yService = AutoClickerAccessibilityService.instance
-        if (Build.VERSION.SDK_INT >= 35 && a11yService != null) {
-            try {
-                val overlayContext = a11yService.createWindowContext(
-                    WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                    null
-                )
-                windowManager = overlayContext.getSystemService(WINDOW_SERVICE) as WindowManager
-                Log.d(TAG, "Using TYPE_ACCESSIBILITY_OVERLAY via accessibility service window context")
-            } catch (e: Exception) {
-                Log.w(TAG, "Failed to create accessibility overlay context, falling back", e)
-                windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-            }
-        } else {
-            windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
-        }
+        // Attach to the display the user is currently looking at. On normal phones this
+        // is display 0; on environments that put each app on its own virtual display
+        // (e.g. MuMu Android 15) it is the app's display, and we follow it as it changes.
+        currentDisplayId = ActiveDisplayTracker.displayId
+        windowManager = createWindowManagerFor(currentDisplayId)
         configRepository = ConfigRepository.getInstance(this)
 
-        // Get screen dimensions (modern API for Android 11+, fallback for older)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            val windowMetrics = windowManager.currentWindowMetrics
-            val insets = windowMetrics.windowInsets
-                .getInsetsIgnoringVisibility(
-                    android.view.WindowInsets.Type.systemBars()
-                )
-            val bounds = windowMetrics.bounds
-            screenWidth = bounds.width() - insets.left - insets.right
-            screenHeight = bounds.height() - insets.top - insets.bottom
-        } else {
-            val metrics = DisplayMetrics()
-            @Suppress("DEPRECATION")
-            windowManager.defaultDisplay.getMetrics(metrics)
-            screenWidth = metrics.widthPixels
-            screenHeight = metrics.heightPixels
-        }
+        updateScreenSize()
 
         createNotificationChannel()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -151,11 +132,10 @@ class FloatingOverlayService : Service() {
         currentScaleY = config.gridScaleY
         currentMarkers = config.layoutType.generateMarkers()
 
-        createGridView()
-        createResizeHandles()
-        createBubbleView()
+        attachOverlayViews()
+        ActiveDisplayTracker.addListener(activeDisplayListener)
 
-        Log.d(TAG, "FloatingOverlayService created with layout: ${config.layoutType.displayName}")
+        Log.d(TAG, "FloatingOverlayService created on display $currentDisplayId (type $overlayWindowType) with layout: ${config.layoutType.displayName}")
     }
 
     /**
@@ -168,12 +148,16 @@ class FloatingOverlayService : Service() {
                 shouldKillProcess = true
                 stopSelf()
             }
+            ACTION_TOGGLE_CLICK -> {
+                toggleClicking()
+            }
         }
         return START_STICKY
     }
 
     override fun onDestroy() {
         super.onDestroy()
+        ActiveDisplayTracker.removeListener(activeDisplayListener)
         // Stop clicking and playback if active
         val engine = MidiPlaybackEngine.getInstance()
         if (engine.isActive) {
@@ -187,10 +171,8 @@ class FloatingOverlayService : Service() {
         removePanelView()
         Log.d(TAG, "FloatingOverlayService destroyed")
 
-        if (shouldKillProcess) {
-            Log.d(TAG, "Killing process to exit completely")
-            android.os.Process.killProcess(android.os.Process.myPid())
-        }
+        // Do NOT call Process.killProcess() here, as it kills AutoClickerAccessibilityService
+        // and causes Android to mark it as a 'crashed service', permanently disabling dispatchGesture().
     }
 
     // ─── Notification ────────────────────────────────────────────────────
@@ -425,6 +407,7 @@ class FloatingOverlayService : Service() {
         windowManager.addView(bubble, params)
         bubbleView = bubble
         bubbleParams = params
+        bubbleIcon = icon
     }
 
     private fun removeBubbleView() {
@@ -1092,7 +1075,8 @@ class FloatingOverlayService : Service() {
      *
      * @param icon The play/pause [ImageView] inside the bubble to update.
      */
-    private fun toggleClicking(icon: ImageView) {
+    private fun toggleClicking(icon: ImageView? = null) {
+        val iconView = icon ?: bubbleIcon
         val service = AutoClickerAccessibilityService.instance
         if (service == null) {
             Log.w(TAG, "Accessibility service not connected!")
@@ -1110,12 +1094,13 @@ class FloatingOverlayService : Service() {
                 service.stopClicking()
             }
             isPlaying = false
-            icon.setImageResource(android.R.drawable.ic_media_play)
+            iconView?.setImageResource(android.R.drawable.ic_media_play)
             gridParams?.let { p ->
                 p.flags = p.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
                 p.alpha = 1.0f
                 try { windowManager.updateViewLayout(gridView, p) } catch (_: Exception) {}
             }
+            gridView?.alpha = 1.0f
             gridView?.visibility = View.VISIBLE
             resizeHandleRight?.visibility = View.VISIBLE
             resizeHandleBottom?.visibility = View.VISIBLE
@@ -1139,12 +1124,13 @@ class FloatingOverlayService : Service() {
                         }
                     )
                     isPlaying = true
-                    icon.setImageResource(android.R.drawable.ic_media_pause)
+                    iconView?.setImageResource(android.R.drawable.ic_media_pause)
                     gridParams?.let { p ->
                         p.flags = p.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                        p.alpha = 0.5f
+                        p.alpha = 1.0f // Never set window alpha < 1.0f, or Android BLOCK_UNTRUSTED blocks touches underneath!
                         try { windowManager.updateViewLayout(gridView, p) } catch (_: Exception) {}
                     }
+                    gridView?.alpha = 0.5f // Dim view contents, not window params
                     gridView?.visibility = View.VISIBLE
                     resizeHandleRight?.visibility = View.GONE
                     resizeHandleBottom?.visibility = View.GONE
@@ -1161,16 +1147,18 @@ class FloatingOverlayService : Service() {
                 // Legacy mode: click all marker positions in sequence
                 val positions = getMarkerScreenPositions()
                 if (positions.isNotEmpty()) {
-                    configRepository.updatePosition(positions[0].first, positions[0].second)
+                    service.startClickingMultiple(positions)
+                } else {
+                    service.startClicking()
                 }
-                service.startClicking()
                 isPlaying = true
-                icon.setImageResource(android.R.drawable.ic_media_pause)
+                iconView?.setImageResource(android.R.drawable.ic_media_pause)
                 gridParams?.let { p ->
                     p.flags = p.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
-                    p.alpha = 0.5f
+                    p.alpha = 1.0f // Never set window alpha < 1.0f, or Android BLOCK_UNTRUSTED blocks touches underneath!
                     try { windowManager.updateViewLayout(gridView, p) } catch (_: Exception) {}
                 }
+                gridView?.alpha = 0.5f // Dim view contents, not window params
                 gridView?.visibility = View.VISIBLE
                 resizeHandleRight?.visibility = View.GONE
                 resizeHandleBottom?.visibility = View.GONE
@@ -1258,25 +1246,169 @@ class FloatingOverlayService : Service() {
         ).toInt()
     }
 
+    /** Window type to use for the current [windowManager]. */
+    private fun getOverlayWindowType(): Int = overlayWindowType
+
     /**
-     * Return the correct overlay window type for the current Android version.
+     * Regular (non-accessibility) overlay type for the current Android version.
      *
-     * - **Android 15+** (API 35): Use [WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY]
-     *   when the accessibility service is connected. This type is privileged and stays
-     *   visible above all apps even when our process is in the background — unlike
-     *   [WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY] which Android 15 hides.
-     * - **Android 8–14** (API 26–34): Use [WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY].
-     * - **Android 7 and below**: Use the deprecated [WindowManager.LayoutParams.TYPE_PHONE].
+     * - **Android 8+** (API 26+): [WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY].
+     * - **Android 7 and below**: the deprecated [WindowManager.LayoutParams.TYPE_PHONE].
      */
-    private fun getOverlayWindowType(): Int {
-        return if (Build.VERSION.SDK_INT >= 35 && AutoClickerAccessibilityService.instance != null) {
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
-        } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+    private fun defaultOverlayWindowType(): Int {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
             @Suppress("DEPRECATION")
             WindowManager.LayoutParams.TYPE_PHONE
         }
+    }
+
+    // ─── Multi-display support ───────────────────────────────────────────
+
+    /**
+     * Build a [WindowManager] that adds windows to [displayId] and set
+     * [overlayWindowType] to the matching window type.
+     *
+     * Preferred (Android 12+, accessibility service connected):
+     * [WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY] through a window context
+     * created by the accessibility service. Unlike TYPE_APPLICATION_OVERLAY, this is
+     * a system overlay, so it is NOT hidden when Settings or a game requests
+     * "hide non-system overlay windows".
+     *
+     * Fallbacks: TYPE_APPLICATION_OVERLAY on [displayId] (Android 11+), then the
+     * service's default WindowManager (display 0).
+     */
+    private fun createWindowManagerFor(displayId: Int, allowAccessibilityOverlay: Boolean = true): WindowManager {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            try {
+                val display = getSystemService(DisplayManager::class.java).getDisplay(displayId)
+                if (display != null) {
+                    val a11y = AutoClickerAccessibilityService.instance
+                    if (allowAccessibilityOverlay && a11y != null &&
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+                    ) {
+                        try {
+                            val a11yContext = a11y.createWindowContext(
+                                display,
+                                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                                null
+                            )
+                            overlayWindowType = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+                            return a11yContext.getSystemService(WindowManager::class.java)
+                        } catch (e: Exception) {
+                            Log.w(TAG, "Accessibility overlay unavailable on display $displayId", e)
+                        }
+                    }
+                    overlayWindowType = defaultOverlayWindowType()
+                    val windowContext = createDisplayContext(display)
+                        .createWindowContext(overlayWindowType, null)
+                    return windowContext.getSystemService(WindowManager::class.java)
+                }
+                Log.w(TAG, "Display $displayId not found, using default display")
+            } catch (e: Exception) {
+                Log.w(TAG, "Could not create window context for display $displayId", e)
+            }
+        }
+        overlayWindowType = defaultOverlayWindowType()
+        return getSystemService(WINDOW_SERVICE) as WindowManager
+    }
+
+    /**
+     * Add grid, resize handles and bubble to [windowManager]. If the accessibility
+     * overlay token is rejected, retry once with a regular app overlay instead of
+     * crashing the service.
+     */
+    private fun attachOverlayViews() {
+        try {
+            createGridView()
+            createResizeHandles()
+            createBubbleView()
+        } catch (e: WindowManager.BadTokenException) {
+            if (overlayWindowType != WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY) throw e
+            Log.w(TAG, "Accessibility overlay rejected, falling back to app overlay", e)
+            removeResizeHandles()
+            removeGridView()
+            removeBubbleView()
+            windowManager = createWindowManagerFor(currentDisplayId, allowAccessibilityOverlay = false)
+            createGridView()
+            createResizeHandles()
+            createBubbleView()
+        }
+    }
+
+    /** Refresh [screenWidth]/[screenHeight] from the current [windowManager]'s display. */
+    private fun updateScreenSize() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val windowMetrics = windowManager.currentWindowMetrics
+            val insets = windowMetrics.windowInsets
+                .getInsetsIgnoringVisibility(
+                    android.view.WindowInsets.Type.systemBars()
+                )
+            val bounds = windowMetrics.bounds
+            screenWidth = bounds.width() - insets.left - insets.right
+            screenHeight = bounds.height() - insets.top - insets.bottom
+        } else {
+            val metrics = DisplayMetrics()
+            @Suppress("DEPRECATION")
+            windowManager.defaultDisplay.getMetrics(metrics)
+            screenWidth = metrics.widthPixels
+            screenHeight = metrics.heightPixels
+        }
+    }
+
+    /**
+     * Move every overlay window to [displayId] (called when the user switches to an
+     * app on another display). Windows are removed via the old WindowManager and
+     * re-created on the new one, keeping bubble position, panel and play state.
+     */
+    private fun moveOverlayToDisplay(displayId: Int) {
+        if (displayId == currentDisplayId) return
+        Log.d(TAG, "Moving overlay from display $currentDisplayId to $displayId")
+
+        val bubbleX = bubbleParams?.x
+        val bubbleY = bubbleParams?.y
+        val panelWasVisible = isPanelVisible
+
+        removePanelView()
+        removeResizeHandles()
+        removeGridView()
+        removeBubbleView()
+
+        windowManager = createWindowManagerFor(displayId)
+        currentDisplayId = displayId
+        updateScreenSize()
+
+        try {
+            attachOverlayViews()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to re-create overlay on display $displayId", e)
+            return
+        }
+
+        // Restore bubble position
+        bubbleParams?.let { p ->
+            if (bubbleX != null && bubbleY != null) {
+                p.x = bubbleX
+                p.y = bubbleY
+                try { windowManager.updateViewLayout(bubbleView, p) } catch (_: Exception) {}
+            }
+        }
+
+        // Restore "playing" visuals (dimmed, untouchable grid, hidden handles)
+        if (isPlaying) {
+            bubbleIcon?.setImageResource(android.R.drawable.ic_media_pause)
+            gridParams?.let { p ->
+                p.flags = p.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+                p.alpha = 1.0f
+                try { windowManager.updateViewLayout(gridView, p) } catch (_: Exception) {}
+            }
+            gridView?.alpha = 0.5f
+            resizeHandleRight?.visibility = View.GONE
+            resizeHandleBottom?.visibility = View.GONE
+        }
+
+        if (panelWasVisible) createPanelView()
     }
 
     companion object {
@@ -1291,6 +1423,9 @@ class FloatingOverlayService : Service() {
         /** Intent action used by the notification "Stop" button. */
         const val ACTION_STOP = "com.autoclicker.app.STOP"
 
+        /** Intent action to toggle clicking (start/pause). */
+        const val ACTION_TOGGLE_CLICK = "com.autoclicker.app.TOGGLE_CLICK"
+
         /** Fixed diameter of each marker circle, in dp. Not affected by grid scaling. */
         private const val MARKER_SIZE_DP = 40
 
@@ -1301,6 +1436,12 @@ class FloatingOverlayService : Service() {
          * Start the floating overlay service.
          */
         fun start(context: Context) {
+            // Start the overlay on the display the calling activity is on.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && context is Activity) {
+                try {
+                    context.display?.displayId?.let { ActiveDisplayTracker.update(it) }
+                } catch (_: Exception) {}
+            }
             val intent = Intent(context, FloatingOverlayService::class.java)
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)

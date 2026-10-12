@@ -206,7 +206,12 @@ class MidiPlaybackEngine {
                     val deltaMs = baseNote.timeMs - lastPlayedTimeMs
                     if (deltaMs > 0) {
                         val adjustedDelay = (deltaMs / speedMultiplier).toLong()
-                        delay(adjustedDelay)
+                        // Ensure previous 40ms tap has completely finished and lifted before next note touches down
+                        val safeDelay = maxOf(adjustedDelay, 45L)
+                        delay(safeDelay)
+                    } else {
+                        // Even if deltaMs is 0, provide minimal spacing between consecutive dispatches
+                        delay(25L)
                     }
                 } else if (i == 0) {
                     // First note: wait from song start
@@ -222,22 +227,25 @@ class MidiPlaybackEngine {
                 val pointsToClick = mutableListOf<Triple<Float, Float, Long>>()
                 for (k in chordNotes.indices) {
                     val note = chordNotes[k]
-                    val duration = chordDurations[k]
                     val transposedNote = note.note + pitchTransposition
                     val markerIndex = NoteMapper.getMappedMarkerIndex(transposedNote, layoutType)
                     if (markerIndex >= 0 && markerIndex < markerScreenPositions.size) {
                         val (x, y) = markerScreenPositions[markerIndex]
-                        pointsToClick.add(Triple(x, y, (duration / speedMultiplier).toLong()))
+                        // Screen taps are crisp 40ms activations (soundfonts ring out automatically)
+                        pointsToClick.add(Triple(x, y, 40L))
                         onMarkerClicked?.invoke(markerIndex)
                     }
                 }
 
+                // Deduplicate chord points so two notes never map to the exact same screen coordinate
+                val uniquePoints = pointsToClick.distinctBy { Pair(it.first, it.second) }
+
                 // Dispatch the click(s)
-                if (pointsToClick.size == 1) {
-                    val (x, y, dur) = pointsToClick[0]
+                if (uniquePoints.size == 1) {
+                    val (x, y, dur) = uniquePoints[0]
                     AutoClickerAccessibilityService.instance?.performSingleClick(x, y, dur)
-                } else if (pointsToClick.size > 1) {
-                    AutoClickerAccessibilityService.instance?.performMultiClick(pointsToClick)
+                } else if (uniquePoints.size > 1) {
+                    AutoClickerAccessibilityService.instance?.performMultiClick(uniquePoints)
                 }
 
                 // Update state for the next iteration
