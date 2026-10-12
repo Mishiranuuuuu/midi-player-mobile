@@ -18,8 +18,8 @@ android {
         applicationId = "com.autoclicker.app"
         minSdk = 24       // API 24 (Android 7.0) — required for dispatchGesture()
         targetSdk = 35
-        versionCode = 3
-        versionName = "1.0.2"
+        versionCode = 4
+        versionName = "1.1.0"
     }
 
     // ─── Release signing config ──────────────────────────────────────
@@ -32,7 +32,7 @@ android {
                 localProperties.load(FileInputStream(localPropertiesFile))
             }
 
-            storeFile = file("../release-key.jks")
+            storeFile = rootProject.file("release-key.jks")
             storePassword = localProperties.getProperty("keystore.password") ?: ""
             keyAlias = localProperties.getProperty("keystore.alias") ?: "my-alias"
             keyPassword = localProperties.getProperty("keystore.password") ?: ""
